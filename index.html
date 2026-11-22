@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Black Hole Renderer – Milestone</title>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+	<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+	<style>
+		body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #111; background: #fff; margin: 0; }
+		h1 { text-align: center; }
+		h2 { margin-top: 2em; }
+		.container { margin: 0; padding: 60px 20%; }
+		@media (max-width: 800px) { .container { padding: 40px 6%; } }
+		.names, .links { text-align: center; }
+		figure { text-align: center; margin: 1.5em 0; }
+		figure img { max-width: 100%; }
+		figcaption { font-size: 0.9em; color: #444; margin-top: 0.4em; }
+		.row { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+		.row figure { flex: 1 1 280px; margin: 0.5em 0; }
+		table { border-collapse: collapse; margin: 1em auto; }
+		th, td { border: 1px solid #ccc; padding: 6px 12px; text-align: center; }
+		th { background: #f3f3f3; }
+		/* Team TODO boxes: delete every .todo block before submitting */
+		.todo { background: #fff6d6; border-left: 4px solid #e0a800; padding: 10px 14px; margin: 1em 0; font-size: 0.93em; }
+		.todo b:first-child { color: #8a6500; }
+	</style>
+</head>
+<body>
+<div class="container">
+
+<h1>CS184 Fall 2026 Final Project Milestone: Black Hole Renderer</h1>
+<div class="names">Names: Aahil Syed, Ronald Ji, Ronald Aung, Allen Chen</div>
+<br>
+<div class="links">
+	<a href="#">Webpage</a> | <a href="#">Slides</a> | <a href="#">Video</a> | <a href="#">GitHub</a>
+</div>
+
+<div class="todo"><b>TODO (Allen):</b> Replace the four links above with the real GitHub Pages URL, slides, unlisted YouTube video, and repo. Delete every yellow TODO box before printing to PDF.</div>
+
+<h2>Summary</h2>
+<p>
+	We are building a renderer that traces light along curved paths around a non-spinning (Schwarzschild) black hole. So far we have a working C++ renderer that integrates each camera ray with RK4 and adaptive step sizes, and renders the black hole's shadow and the lensed star field behind it. We also benchmarked adaptive against fixed step sizes: adaptive stepping produces the same image with about 9.7&times; less work. Following feedback on our proposal, the rest of the project focuses on numerical methods and GPU optimization.
+</p>
+
+<h2>Accomplishments</h2>
+<ul>
+	<li><b>Curved ray tracing.</b> Each ray is integrated in 3D Cartesian coordinates using \( \ddot{\mathbf{x}} = -\tfrac{3}{2} h^2 \mathbf{x} / |\mathbf{x}|^5 \), where \( h = |\mathbf{x} \times \mathbf{v}| \) is conserved per ray and units are chosen so the Schwarzschild radius is 1. Rays stop when they fall inside the horizon (black), escape to large radius (sky lookup), or hit a step limit.</li>
+	<li><b>Adaptive step size.</b> The step is proportional to distance from the hole (\( 0.02\,r \)), so rays take small steps near the hole and large steps in empty space. A <code>--fixed</code> mode uses a constant step instead, so we can compare the two.</li>
+	<li><b>Sky.</b> Escaped rays sample an equirectangular star map by their final direction. A checkerboard sky makes the lensing distortion easy to see and check.</li>
+	<li><b>Measurement tools.</b> The renderer records the number of steps per pixel and writes a step-count heatmap (log scale), and logs render time and total steps to a CSV. A benchmark script runs every combination of resolution, step mode and thread count.</li>
+	<li><b>Parallelism.</b> Rendering is parallelized over pixels with OpenMP.</li>
+</ul>
+
+<div class="todo"><b>TODO (Ronald J.):</b> Add a bullet for the accretion disk: disk-plane crossing detection, multiple crossings, blackbody color. <b>TODO (Ronald A.):</b> Add a bullet for the integrator comparison script.</div>
+
+<h2>Preliminary Results</h2>
+
+<h3>Black hole shadow and lensing</h3>
+<div class="row">
+	<figure>
+		<img src="images/shadow_checker.png" alt="Black hole against a checkerboard sky">
+		<figcaption>Checkerboard sky: the grid bends into an Einstein ring around the shadow.</figcaption>
+	</figure>
+	<figure>
+		<img src="images/shadow_stars.png" alt="Black hole against a star map">
+		<figcaption>Star map sky: background stars are lensed around the shadow.</figcaption>
+	</figure>
+</div>
+
+<div class="todo"><b>TODO (Aahil):</b> Copy the Stage 1 renders into <code>images/</code> as <code>shadow_checker.png</code> and <code>shadow_stars.png</code>, along with <code>renders/heatmap_adaptive.png</code> and <code>renders/heatmap_fixed.png</code>.</div>
+
+<h3>Adaptive vs. fixed step size</h3>
+<p>
+	We compared adaptive steps (\( 0.02\,r \)) against a fixed step of 0.03, which matches the adaptive step at the photon sphere (\( r = 1.5 \)), so both handle the hardest region equally well. Both match a very fine-step reference image to within 0.001% of pixels. Times are the median of 3 runs on an Apple M3 laptop.
+</p>
+<table>
+	<tr><th>1280&times;720</th><th>1 thread</th><th>8 threads</th><th>Speedup</th><th>Steps / ray</th></tr>
+	<tr><td>Adaptive (0.02 r)</td><td>7.7 s</td><td>1.48 s</td><td>5.2&times;</td><td>230</td></tr>
+	<tr><td>Fixed (0.03)</td><td>70.4 s</td><td>15.2 s</td><td>4.6&times;</td><td>2224</td></tr>
+</table>
+<p>
+	Both modes run at about 30 million steps per second on one thread, so the entire 9.7&times; difference comes from the number of steps. The heatmaps show why: adaptive stepping concentrates its work in a thin ring at the edge of the shadow, where rays orbit near the photon sphere, while fixed stepping spends about 2,200 steps on every ray, including rays that pass far from the hole.
+</p>
+<div class="row">
+	<figure>
+		<img src="images/heatmap_adaptive.png" alt="Step-count heatmap, adaptive steps">
+		<figcaption>Steps per pixel, adaptive (log scale).</figcaption>
+	</figure>
+	<figure>
+		<img src="images/heatmap_fixed.png" alt="Step-count heatmap, fixed steps">
+		<figcaption>Steps per pixel, fixed 0.03 (same scale).</figcaption>
+	</figure>
+</div>
+<p>
+	Fixed steps are not hopeless at equal cost: a fixed step of 0.3 uses about as many steps as adaptive (223 per ray) and gets 0.012% of pixels wrong, compared to 0.001% for adaptive. Fixed steps break down once they get coarse. At a step of 1, the same size as the horizon radius, the shadow shrinks (4.82% of pixels captured instead of 5.375%) and 1.1% of pixels are wrong, likely because grazing rays step past the horizon test. Adaptive stepping is still correct at 74 steps per ray. One limitation is that our pixel-difference metric uses a coarse checkerboard, so it under-counts errors inside the thin photon ring. The integrator comparison below is the sharper accuracy test.
+</p>
+
+<h3>Parallel speedup</h3>
+<p>
+	OpenMP gives about 3.6&times; on 4 threads and 5.2&ndash;5.7&times; on 8. Scaling flattens past 4 threads because threads 5&ndash;8 run on the M3's slower efficiency cores.
+</p>
+
+<h3>Accretion disk</h3>
+<div class="todo"><b>TODO (Ronald J.):</b> Add 2&ndash;4 disk renders (~80&deg; and ~30&deg; inclination, texture and blackbody versions) with captions, and 2&ndash;3 sentences on how disk hits are found and any problems you hit.</div>
+
+<h3>Integrator accuracy</h3>
+<div class="todo"><b>TODO (Ronald A.):</b> Add the error-vs-function-evaluations plot (Euler, RK4, RK45), the table of critical impact parameter vs. the exact \( 3\sqrt{3}/2 \approx 2.598 \), and 2&ndash;3 sentences on the results.</div>
+
+<h2>Progress Relative to Our Plan</h2>
+<p>
+	Week 1 is complete: the renderer traces curved rays and renders the shadow against a star background. We went beyond the plan on measurement, adding step-count heatmaps, timing, and a fixed vs. adaptive comparison, because the proposal feedback asked for deeper evaluation of the numerical methods.
+</p>
+<div class="todo"><b>TODO (all):</b> Update this paragraph at 9pm to match what is actually finished: whether the disk works, whether the integrator comparison is done, and that the GPU port has not started yet (it was planned for Week 2).</div>
+
+<h2>Updated Work Plan</h2>
+<p>
+	Our proposal feedback noted that the core equations are well known and asked us to focus on numerical methods and GPU optimization. The rest of the project centers on careful comparison and measurement:
+</p>
+<ul>
+	<li><b>Week 3: Numerical methods and disk shading.</b> Compare Euler, RK4, adaptive RK45 and leapfrog integrators against the exact deflection angle, measuring error vs. cost, drift in conserved angular momentum, and image error against a high-accuracy reference render. Compare linear interpolation against root finding for disk hits. Add gravitational redshift and Doppler beaming.</li>
+	<li><b>Week 3: GPU port.</b> Port the integrator to a GPU shader and measure frame time against the CPU version.</li>
+	<li><b>Week 4: GPU optimization.</b> Add one optimization at a time and time each: float vs. double precision, adaptive steps, a precomputed deflection lookup table (possible because a non-spinning black hole is spherically symmetric), and reducing uneven work between pixels, which our heatmaps show is concentrated near the photon ring. Report a speedup table and a frame-time vs. accuracy plot.</li>
+	<li><b>Week 4: Final results.</b> Final renders at several viewing angles, a flythrough video, and the presentation.</li>
+</ul>
+
+</div>
+</body>
+</html>
