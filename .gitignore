@@ -1,0 +1,15 @@
+# build output
+build/
+cmake-build-*/
+
+# editor / tooling
+.cache/
+.vscode/
+.idea/
+compile_commands.json
+
+# OS
+.DS_Store
+
+# python
+__pycache__/
