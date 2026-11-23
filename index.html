@@ -29,45 +29,12 @@
 <body>
 <div class="container">
 
-<div class="todo">
-<b>Team tasks (delete this box before submitting)</b>
-<p><b>Everyone first:</b> pull the repo, build it, and render the shadow image. Read through the code, especially the geodesic integrator, until you can explain how a ray is traced. Everyone speaks in the video, so everyone should understand the code.</p>
-<p><b>Person 1 (Aahil): done.</b> Stage 1 renderer (RK4 with adaptive steps, star map and checkerboard sky), fixed-step mode, step-count heatmaps, timing CSV and benchmarks, OpenMP. Renders and heatmaps are in <code>images/</code>. Remaining: merge everyone's branches.</p>
-<p><b>Person 2 (Ronald Aung): accretion disk — done.</b> Disk intersections, striped and blackbody shading, camera inclination, four renders, and notes are complete. The original task list is below.</p>
-<ol>
-<li>Add a thin disk in the equatorial plane (z = 0; the renderer's world is z-up) from r = 3 (the innermost stable orbit) to r = 15.</li>
-<li>Find disk hits: after each integration step, check whether the ray's z coordinate changed sign. If it did, linearly interpolate between the two points to get the hit position, and check that its radius is between 3 and 15. Don't stop the ray at the first sign change outside the disk, because rays can cross the plane several times. That's what makes the far side of the disk appear above and below the shadow.</li>
-<li>Shade the disk with a simple radial stripe or checkerboard texture first. This makes it easy to see whether the lensing looks right.</li>
-<li>Then color it as a blackbody: temperature \( T(r) \propto r^{-3/4}\,(1 - \sqrt{3/r})^{1/4} \). Convert temperature to RGB with a blackbody color table (for example Mitchell Charity's) or a standard approximation, and scale brightness so the inner edge is bright.</li>
-<li>Add a camera inclination argument. Render 1280&times;720 images at about 80&deg; (nearly edge-on) and about 30&deg;, with both the texture and the blackbody color.</li>
-<li>Write what you did and any problems in <code>NOTES.md</code>, then fill in the accretion disk sections below.</li>
-</ol>
-<p><b>Person 3: integrator accuracy</b> (Python and NumPy, in a new <code>analysis/</code> folder, separate from the C++ code)</p>
-<ol>
-<li>Write the photon orbit as an ODE in the orbital plane. A simple form: with \( u = 1/r \) and \( r_s = 1 \), \( u'' = -u + \tfrac{3}{2}u^2 \), where \( ' \) is the derivative with respect to angle. A ray coming in from far away starts at \( u = 0,\ u' = 1/b \), where \( b \) is the impact parameter.</li>
-<li>Get a ground-truth deflection angle for each \( b \): numerically integrate the exact formula (or use scipy's <code>solve_ivp</code> with very tight tolerances, rtol around 1e-12).</li>
-<li>Implement three integrators yourself: Euler, RK4 with a fixed step, and adaptive RK45 (Dormand&ndash;Prince, with error control).</li>
-<li>For several values of \( b \), from far away down to just above the critical value \( 3\sqrt{3}/2 \approx 2.598 \), plot deflection error against the number of function evaluations on log&ndash;log axes, one line per method.</li>
-<li>For each method and step size, binary-search the smallest \( b \) that escapes, and compare it to 2.598 in a table.</li>
-<li>Write the results in <code>NOTES.md</code>, save the plots as PNGs, and fill in the integrator accuracy sections below.</li>
-</ol>
-<p><b>Person 4: star map render, website, slides and video.</b></p>
-<ol>
-<li>Download an equirectangular star map from NASA's <a href="https://svs.gsfc.nasa.gov/4851">Deep Star Maps 2020</a>. The full-size files are huge, so pick a 4K or 8K version (or downscale it to about 4096&times;2048) and save it as a PNG or JPG in the repo's <code>assets/</code> folder.</li>
-<li>Render the black hole with the star map as the sky at 1280&times;720 (see the README for the sky and camera options). Try a couple of camera positions and pick the one where the lensing ring is clearest.</li>
-<li>Save the best render as <code>images/shadow_stars.png</code> for the Preliminary Results section.</li>
-</ol>
-<p>Host this page on GitHub Pages and fill in the links at the top. Make 2&ndash;3 slides (idea, current results, next steps). Collect a ~15-second clip from each person on their own part and edit them into a ~1-minute video. Upload it as unlisted on YouTube (or share on Google Drive with all Berkeley users). At the end, print this page to PDF (Safari: Print &rarr; Save as PDF) with clickable links and submit on Gradescope.</p>
-</div>
-
 <h1>CS184 Fall 2026 Final Project Milestone: Black Hole Renderer</h1>
-<div class="names">Names: Aahil Syed, Ronald Aung, Person 3, Person 4</div>
+<div class="names">Names: Aahil Syed, Ronald Aung, Ronald Ji, Allen Chen</div>
 <br>
 <div class="links">
-    <a href="https://aahilsyed72.github.io/cs184-final-project/">Webpage</a> | <a href="https://drive.google.com/file/d/1b85d8Fg88zlIGWR03-HdlA1NKadgshe2/view?usp=sharing">Slides</a> | <span>Video (coming soon)</span> | <a href="https://github.com/aahilsyed72/cs184-final-project">GitHub</a>
+    <a href="https://aahilsyed72.github.io/cs184-final-project/">Webpage</a> | <a href="https://drive.google.com/file/d/1b85d8Fg88zlIGWR03-HdlA1NKadgshe2/view?usp=sharing">Slides</a> | <a href="https://youtu.be/s-53rEp43Ao">Video</a> | <a href="https://github.com/aahilsyed72/cs184-final-project">GitHub</a>
 </div>
-
-<div class="todo"><b>TODO (Person 4):</b> Add the video link once the recording is ready. The webpage, slides, and repository links are filled in. Delete every yellow TODO box before printing to PDF.</div>
 
 <h2>Summary</h2>
 <p>
@@ -186,9 +153,8 @@
 
 <h2>Progress Relative to Our Plan</h2>
 <p>
-    Week 1 is complete: the renderer traces curved rays and renders the shadow against a star background. The disk part of Week 2 is also done, with striped and temperature-based shading and renders at 30&deg; and 80&deg;. We went beyond the plan on measurement, adding step-count heatmaps, timing, and a fixed vs. adaptive comparison, because the proposal feedback asked for deeper evaluation of the numerical methods. The first part of the Week 3 numerical-methods work is also finished: Euler, RK4 and adaptive RK45 are compared against the exact deflection angle, both for error against cost and for where each method places the shadow's edge. Leapfrog and drift in the conserved angular momentum are still to come.
+    Week 1 is complete: the renderer traces curved rays and renders the shadow against a star background. The disk part of Week 2 is also done, with striped and temperature-based shading and renders at 30&deg; and 80&deg;. We went beyond the plan on measurement, adding step-count heatmaps, timing, and a fixed vs. adaptive comparison, because the proposal feedback asked for deeper evaluation of the numerical methods. The first part of the Week 3 numerical-methods work is also finished: Euler, RK4 and adaptive RK45 are compared against the exact deflection angle, both for error against cost and for where each method places the shadow's edge. Leapfrog and drift in the conserved angular momentum are still to come. The GPU port, originally planned for Week 2, has not started yet; it has moved to Week 3 in the updated plan below.
 </p>
-<div class="todo"><b>TODO (all):</b> Once everything is merged, update this paragraph to match what is actually finished. The integrator comparison sentence is in; still needed: the current status of the GPU port (it was planned for Week 2).</div>
 
 <h2>Updated Work Plan</h2>
 <p>
