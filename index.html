@@ -82,9 +82,9 @@
     <li><b>Measurement tools.</b> The renderer records the number of steps per pixel and writes a step-count heatmap (log scale), and logs render time and total steps to a CSV. A benchmark script runs every combination of resolution, step mode and thread count.</li>
     <li><b>Accretion disk.</b> Added a thin disk from radius 3 to 15, with orange stripes for checking the shape and temperature-based colors for the final look. Rays keep going after plane crossings outside the disk and stop at the first valid disk hit. We also added a camera angle option and rendered both shading styles at 30&deg; and 80&deg;.</li>
     <li><b>Parallelism.</b> Rendering is parallelized over pixels with OpenMP.</li>
+    <li><b>Integrator comparison.</b> A separate Python script solves the planar photon orbit \( u'' = -u + \tfrac{3}{2}u^2 \) (with \( u = 1/r \)) using Euler, fixed-step RK4 and adaptive Dormand&ndash;Prince RK45, all written by hand. It compares each against the exact deflection integral, measuring error against the number of function evaluations and finding the smallest impact parameter that escapes.</li>
 </ul>
 
-<div class="todo"><b>TODO (Person 3):</b> Add a bullet for the integrator comparison script.</div>
 
 <h2>Preliminary Results</h2>
 
@@ -160,13 +160,35 @@
 </p>
 
 <h3>Integrator accuracy</h3>
-<div class="todo"><b>TODO (Person 3):</b> Add the error-vs-function-evaluations plot (Euler, RK4, RK45), the table of critical impact parameter vs. the exact \( 3\sqrt{3}/2 \approx 2.598 \), and 2&ndash;3 sentences on the results.</div>
+<p>
+    To test the integrators in isolation, we solve the photon orbit in its plane, \( u'' = -u + \tfrac{3}{2}u^2 \) with \( u = 1/r \) and \( r_s = 1 \), starting from \( u = 0,\ u' = 1/b \). We compare the deflection angle against the exact integral \( 2\int_0^{u_0} du/\sqrt{1/b^2 - u^2 + u^3} - \pi \), which we cross-checked against scipy's DOP853 to \( 10^{-12} \) or better. Every evaluation of the right-hand side is counted, including rejected adaptive steps.
+</p>
+<figure>
+    <img src="images/integrator_error.png" alt="Log-log plots of deflection error against function evaluations for Euler, RK4 and RK45 at six impact parameters">
+    <figcaption>Deflection error vs. cost for six impact parameters, from far away (b = 20) to just above critical (b = 2.6). An &times; marks a ray the method wrongly captured.</figcaption>
+</figure>
+<table>
+    <tr><th>Method</th><th>Setting</th><th>Smallest escaping \( b \)</th><th>Error</th></tr>
+    <tr><td>Euler</td><td>\( h = 0.1 \)</td><td>2.67852</td><td>+8.0&times;10<sup>&minus;2</sup></td></tr>
+    <tr><td>Euler</td><td>\( h = 0.01 \)</td><td>2.60580</td><td>+7.7&times;10<sup>&minus;3</sup></td></tr>
+    <tr><td>Euler</td><td>\( h = 0.001 \)</td><td>2.59885</td><td>+7.7&times;10<sup>&minus;4</sup></td></tr>
+    <tr><td>RK4</td><td>\( h = 0.5 \)</td><td>2.59753</td><td>&minus;5.5&times;10<sup>&minus;4</sup></td></tr>
+    <tr><td>RK4</td><td>\( h = 0.1 \)</td><td>2.5980756</td><td>&minus;6.4&times;10<sup>&minus;7</sup></td></tr>
+    <tr><td>RK4</td><td>\( h = 0.01 \)</td><td>2.5980762113</td><td>&minus;4.3&times;10<sup>&minus;11</sup></td></tr>
+    <tr><td>RK45</td><td>tol 10<sup>&minus;3</sup></td><td>2.59804</td><td>&minus;3.5&times;10<sup>&minus;5</sup></td></tr>
+    <tr><td>RK45</td><td>tol 10<sup>&minus;6</sup></td><td>2.598073</td><td>&minus;3.2&times;10<sup>&minus;6</sup></td></tr>
+    <tr><td>RK45</td><td>tol 10<sup>&minus;9</sup></td><td>2.598076210</td><td>&minus;1.5&times;10<sup>&minus;9</sup></td></tr>
+</table>
+<p style="text-align:center; font-size:0.9em; color:#444;">Exact: \( 3\sqrt{3}/2 = 2.5980762114 \). Found by bisection to about \( 2\times10^{-11} \).</p>
+<p>
+    Euler and RK4 converge at their expected orders (fitted slopes of about &minus;1 and &minus;4), and RK45 falls off even faster. For a target error of \( 10^{-6} \), RK45 needs 1.7&times; fewer evaluations than RK4 far from the hole and 3.1&times; fewer at \( b = 2.6 \), because it only takes small steps near the photon sphere. Euler would need around \( 10^8 \) evaluations to reach that accuracy. Euler also adds energy to the orbit, so it captures rays that should escape: its shadow comes out too large (\( b_c \) off by 0.08 at \( h = 0.1 \), about 4 pixels in our renders), while RK4 and RK45 put the shadow edge well within a pixel at any reasonable step.
+</p>
 
 <h2>Progress Relative to Our Plan</h2>
 <p>
-    Week 1 is complete: the renderer traces curved rays and renders the shadow against a star background. The disk part of Week 2 is also done, with striped and temperature-based shading and renders at 30&deg; and 80&deg;. We went beyond the plan on measurement, adding step-count heatmaps, timing, and a fixed vs. adaptive comparison, because the proposal feedback asked for deeper evaluation of the numerical methods.
+    Week 1 is complete: the renderer traces curved rays and renders the shadow against a star background. The disk part of Week 2 is also done, with striped and temperature-based shading and renders at 30&deg; and 80&deg;. We went beyond the plan on measurement, adding step-count heatmaps, timing, and a fixed vs. adaptive comparison, because the proposal feedback asked for deeper evaluation of the numerical methods. The first part of the Week 3 numerical-methods work is also finished: Euler, RK4 and adaptive RK45 are compared against the exact deflection angle, both for error against cost and for where each method places the shadow's edge. Leapfrog and drift in the conserved angular momentum are still to come.
 </p>
-<div class="todo"><b>TODO (all):</b> Once everything is merged, update this paragraph to match what is actually finished: whether the integrator comparison is done and the current status of the GPU port (it was planned for Week 2).</div>
+<div class="todo"><b>TODO (all):</b> Once everything is merged, update this paragraph to match what is actually finished. The integrator comparison sentence is in; still needed: the current status of the GPU port (it was planned for Week 2).</div>
 
 <h2>Updated Work Plan</h2>
 <p>

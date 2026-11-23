@@ -228,6 +228,9 @@ The disk extends past the image edges with the current camera distance and field
 The code builds, and numerical checks passed for disk crossings, the temperature peak, valid
 color values, and camera angles. The images were also checked visually; that doesn't replace
 an accuracy comparison against a reference.
+
+---
+
 ## Person 4 — star map render (steps 2–3)
 
 Rendered the existing `assets/starmap_2020_4k_gal.jpg` sky at 1280x720 with
@@ -250,3 +253,99 @@ The build succeeded and all four candidate renders were visually inspected.
 The selected render traced 3,686,400 rays: 96,968 captured, 3,589,432 escaped,
 zero disk hits, and zero rays reaching the step limit. The bright band is the
 lensed sky; disk shading was disabled explicitly because it is enabled by default.
+
+---
+
+## Integrator accuracy — Euler vs. RK4 vs. adaptive RK45
+
+Code: `analysis/integrators.py` (Python/NumPy, separate from the C++ renderer). To reproduce:
+
+```
+python3 -m venv analysis/.venv
+analysis/.venv/bin/pip install -r analysis/requirements.txt
+analysis/.venv/bin/python analysis/integrators.py
+```
+
+It writes `images/integrator_error.png`, `analysis/results/convergence.csv` and
+`analysis/results/critical_b.md`. It runs in a few seconds.
+
+### Setup
+
+- The test problem is the photon orbit in its orbital plane, with u = 1/r and r_s = 1:
+  `u'' = -u + 1.5 u^2`, where ' is d/dphi. Rays start at u = 0, u' = 1/b. A ray escapes when u
+  returns to 0, and the deflection angle is phi_exit - pi. It is captured if u reaches 1
+  (the horizon), or counted as captured if it is still bound after phi = 200.
+- **Ground truth.** Uses the exact integral `phi_total = 2 ∫_0^u0 du / sqrt(1/b^2 - u^2 + u^3)`,
+  where u0 is the turning point. Factoring the cubic and substituting u = u0 - s^2 removes the
+  square-root singularity, and scipy `quad` then evaluates it. As an independent check it is
+  compared with scipy's DOP853 (rtol 1e-13). The two agree to 1e-14 for b ≥ 3.5, 2e-13 at
+  b = 2.65 and 4e-12 at b = 2.6, so errors below about 1e-12 don't mean much for the rays
+  closest to critical.
+- **Integrators, written by hand:** forward Euler (1 eval per step), classic RK4 with a fixed
+  step (4 evals per step), and Dormand–Prince RK45. RK45 has embedded error control, reuses the
+  last stage for the next step (6 evals per step) and limits steps to 0.5. Its tolerance is mixed
+  absolute/relative: `tol * (1 + |y|)`. Every call to the right-hand side is counted, including
+  rejected RK45 steps.
+- **Exit angle.** When a step ends with u < 0, the exact crossing is found with 3 Newton
+  iterations on the size of that last step, each using the method's own step function. This keeps
+  the exit angle as accurate as the method itself. Interpolating linearly would cap RK4 at O(h^2).
+  These evaluations are counted too.
+
+### Error vs. cost
+
+![Deflection error vs. function evaluations](images/integrator_error.png)
+
+Fitted slopes of log(error) vs. log(evals), and cost to reach 1e-6 rad:
+
+| b | Euler slope | RK4 slope | RK45 slope | RK4 evals for 1e-6 | RK45 evals for 1e-6 |
+|---|---|---|---|---|---|
+| 20   | -1.1 | -4.3 | -7.2 | 171  | 99  |
+| 2.65 | -1.1 | -4.2 | -6.4 | 486  | 256 |
+| 2.6  | -1.1 | -4.2 | -6.4 | 1656 | 541 |
+
+- Euler and RK4 converge at their expected orders, 1 and 4. RK45 falls off faster than order 5
+  in this range. Its error per step is 5th order, and tightening the tolerance also puts the
+  steps where they are needed, so the slope is steep until the ground-truth floor is reached.
+- Euler never reaches 1e-6 within 3×10^5 evaluations. Extrapolating at b = 2.65 gives about
+  10^8 evaluations.
+- Near the critical b the deflection grows (6.8 rad at b = 2.6), and every method needs more
+  evaluations for the same error. RK45's advantage over RK4 grows from 1.7× at b = 20 to 3.1× at
+  b = 2.6, because it can take small steps only near the photon sphere. This is the same effect as
+  the renderer's adaptive steps concentrating work in the photon ring.
+- Coarse Euler wrongly *captures* rays at b = 2.65 and 2.6 (the x marks on the plot). Euler adds
+  energy to oscillatory solutions, so u overshoots, the ray dips closer than it should and falls
+  in.
+
+### Critical impact parameter
+
+For each method and setting, the smallest escaping b was found by bisection on [2, 3.5],
+36 iterations (bracket about 2e-11). Exact value: 3√3/2 = 2.5980762114.
+
+| Method | Setting | Smallest escaping b | Error |
+|---|---|---|---|
+| Euler | h = 0.1 | 2.6785185440 | +8.0e-2 |
+| Euler | h = 0.01 | 2.6058011596 | +7.7e-3 |
+| Euler | h = 0.001 | 2.5988455203 | +7.7e-4 |
+| RK4 | h = 0.5 | 2.5975271825 | -5.5e-4 |
+| RK4 | h = 0.1 | 2.5980755755 | -6.4e-7 |
+| RK4 | h = 0.01 | 2.5980762113 | -4.3e-11 |
+| RK45 | tol 1e-3 | 2.5980407958 | -3.5e-5 |
+| RK45 | tol 1e-6 | 2.5980730379 | -3.2e-6 |
+| RK45 | tol 1e-9 | 2.5980762098 | -1.5e-9 |
+
+- Euler's error shrinks 10× for each 10× smaller step (first order), and it is always biased
+  high: the shadow comes out too big. RK4's error shrinks by about 10^4 per 10× smaller step.
+- RK4 and RK45 err slightly low: they let a few rays that should be captured escape.
+- The shadow edge is the most sensitive part of the image, and even RK45 at tol 1e-3 places it
+  within 4e-5 of the right b. In the renderer (camera at r = 20, 40° vertical FOV, 720 rows),
+  one pixel is about 0.001 rad, or Δb ≈ 0.02. Integrator error at the shadow edge is therefore
+  hundreds of times smaller than a pixel for RK4 or RK45, while coarse Euler (h = 0.1, error 0.08)
+  would be off by about 4 pixels.
+
+### Caveats
+
+- This is the planar 1D problem in φ. The renderer integrates 3D Cartesian positions in a
+  different parameter, with steps of 0.02 r, so the step sizes here don't map directly to the
+  renderer's.
+- Leapfrog/symplectic integrators and drift in the conserved angular momentum are not done yet.
+  They are planned for Week 3.
