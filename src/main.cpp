@@ -62,7 +62,7 @@ static void usage() {
         "  --res WxH           resolution               (default 1280x720)\n"
         "  --spp n             samples per pixel        (default 1; use 4 or 9 to antialias)\n"
         "  --sky S             stars | checker | path/to/equirect.(png|jpg|hdr)\n"
-        "  --disk MODE         blackbody | stripes (default blackbody)\n"
+        "  --disk MODE         blackbody | stripes | none (default blackbody)\n"
         "  --exposure e        brightness multiplier    (default 1)\n"
         "  --step k            adaptive step factor, dλ = k*r (default 0.02)\n"
         "  --fixed dl          use a FIXED step dλ = dl instead of adaptive (e.g. 0.03)\n"
@@ -116,8 +116,9 @@ static Options parse_args(int argc, char** argv) {
             const std::string mode = next();
             if (mode == "blackbody") o.disk.shading = DiskShading::Blackbody;
             else if (mode == "stripes") o.disk.shading = DiskShading::Stripes;
+            else if (mode == "none") o.disk.enabled = false;
             else {
-                std::fprintf(stderr, "bad --disk mode '%s' (expected blackbody or stripes)\n", mode.c_str());
+                std::fprintf(stderr, "bad --disk mode '%s' (expected blackbody, stripes or none)\n", mode.c_str());
                 std::exit(1);
             }
         }
@@ -269,6 +270,7 @@ int main(int argc, char** argv) {
                     RayResult res = trace_ray(
                         s, opt.trace,
                         [&](const RayState& prev, const RayState& cur) {
+                            if (!disk.enabled) return false;
                             disk_hit = intersect_disk(prev, cur, hit_position, disk);
                             return disk_hit;  // Opaque disk: stop at the first valid hit.
                         }, &end,

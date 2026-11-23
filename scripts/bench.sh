@@ -14,7 +14,7 @@ rm -f "$CSV"
 
 # Checker sky: sky lookups are trivial either way, and it avoids rebuilding the
 # procedural star texture each run (which isn't timed anyway). 1 spp = 1 ray per pixel.
-COMMON="--sky checker --spp 1 --pos 0,-20,2"
+COMMON="--sky checker --spp 1 --pos 0,-20,2 --disk none"
 
 for res in 640x360 1280x720; do
   for mode in "--step 0.02" "--fixed 0.03"; do

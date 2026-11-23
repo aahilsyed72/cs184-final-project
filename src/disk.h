@@ -11,6 +11,7 @@ enum class DiskShading { Stripes, Blackbody };
 struct DiskParams {
     double inner_radius = 3.0;
     double outer_radius = 15.0;
+    bool enabled = true;  // false (--disk none): no disk, the original Stage 1 scene
     DiskShading shading = DiskShading::Blackbody;
     double peak_temperature = 6500.0;  // Kelvin; chosen for visible warm/white colors.
 };

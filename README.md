@@ -54,6 +54,7 @@ cmake --build build -j
 Main options (`--help` lists them all):
 
 The thin disk now uses approximate blackbody coloring by default. Use
+`--disk none` for the original Stage 1 scene (no disk; used by `scripts/bench.sh`),
 `--disk stripes` for the diagnostic orange bands or `--disk blackbody` for
 temperature-based shading. The temperature profile peaks at 6500 K just
 outside the inner edge (r = 49/12), with relative brightness scaled by T^4.
