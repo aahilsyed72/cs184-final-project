@@ -228,3 +228,25 @@ The disk extends past the image edges with the current camera distance and field
 The code builds, and numerical checks passed for disk crossings, the temperature peak, valid
 color values, and camera angles. The images were also checked visually; that doesn't replace
 an accuracy comparison against a reference.
+## Person 4 — star map render (steps 2–3)
+
+Rendered the existing `assets/starmap_2020_4k_gal.jpg` sky at 1280x720 with
+four samples per pixel and the disk disabled. Compared camera positions
+`(0,-20,2)`, `(-20,0,2)`, and `(-20,0,8)` at the default 40-degree vertical
+field of view. The `(-20,0,2)` view produced the clearest bright lensing ring;
+increasing its field of view to 55 degrees kept the complete ring in frame.
+Saved this selection as `images/shadow_stars.png`, already referenced by the
+Preliminary Results section in `index.html`.
+
+Reproduce from the repository root:
+
+```bash
+cmake -S . -B build
+cmake --build build -j
+./build/blackhole --sky assets/starmap_2020_4k_gal.jpg --disk none --pos -20,0,2 --fov 55 --res 1280x720 --spp 4 --threads 8 -o images/shadow_stars.png
+```
+
+The build succeeded and all four candidate renders were visually inspected.
+The selected render traced 3,686,400 rays: 96,968 captured, 3,589,432 escaped,
+zero disk hits, and zero rays reaching the step limit. The bright band is the
+lensed sky; disk shading was disabled explicitly because it is enabled by default.
