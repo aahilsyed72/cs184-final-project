@@ -154,3 +154,77 @@ Heatmaps (1280x720, same 100–20000 color range): `renders/heatmap_adaptive.png
 ### Problems hit
 - The accuracy summary first crashed: the renderer writes step 1.0 as `1` (`%g`), but the script saved
   `fixed_1.0.png`. Fixed by using `1` in `bench.sh`.
+
+---
+
+## Stage 2 — Accretion disk (Ronald Aung)
+
+### Adding the disk
+
+Added `src/disk.h` for the disk intersections and colors, then connected it to the ray loop in
+`main.cpp`. The disk is a flat ring at `z = 0`, from radius 3 to 15. These distances use the same
+units as the rest of the renderer, where the horizon radius is 1.
+
+After each RK4 step, we check whether the ray went from above the disk's plane to below it, or
+the other way around. If it did, we use a straight line between the two positions to estimate
+where it crossed. We then check whether that point is between the disk's inner and outer edges.
+Crossing the plane through the central hole or outside radius 15 doesn't count as a hit, so the
+ray keeps going and can hit the disk on a later crossing. The disk is opaque, so the first valid
+hit stops the ray and supplies its color.
+
+Started with alternating orange stripes, each one radius unit wide. This made it easier to see
+how the curved rays distort the disk before adding the temperature colors. The stripes are still
+available with `--disk stripes`.
+
+### Temperature and color
+
+The blackbody mode uses this temperature profile:
+
+`T(r) ∝ r^(-3/4) * (1 - sqrt(3/r))^(1/4)`
+
+The temperature is zero right at the inner edge, peaks a little farther out at about radius 4.08,
+and then drops toward the outer edge. We set the peak to 6500 K to get visible warm-to-white colors.
+The temperature-to-RGB conversion uses Tanner Helland's approximation, and the color is converted
+to linear RGB before averaging pixel samples. Brightness is scaled by `(T / T_peak)^4`, so the
+outer disk is dimmer. This is a simple color model, not a full spectral calculation.
+
+`--disk blackbody` selects this mode and is now the default. Both modes use the same disk and
+ray paths; only the shading changes.
+
+### Viewing angles and results
+
+Added `--inclination` to change the viewing angle while keeping the camera the same distance
+from the black hole. The angle is measured from the vertical axis: 0 degrees looks straight down
+at the disk, and 90 degrees is directly side-on. The camera points at the center.
+
+The four renders are 1280x720:
+
+| Striped disk, 30 degrees | Striped disk, 80 degrees |
+|---|---|
+| ![Striped disk at 30 degrees](renders/disk_stripes_30.png) | ![Striped disk at 80 degrees](renders/disk_stripes_80.png) |
+
+| Blackbody disk, 30 degrees | Blackbody disk, 80 degrees |
+|---|---|
+| ![Blackbody disk at 30 degrees](renders/disk_blackbody_30.png) | ![Blackbody disk at 80 degrees](renders/disk_blackbody_80.png) |
+
+At 30 degrees, we see more of the disk's surface and the stripes look like rings around the
+shadow. At 80 degrees, the front of the disk crosses in front of the shadow, while the far side
+appears as an arch above it. The disk itself is still flat; the curved light paths cause that shape.
+The blackbody versions have a bright white inner region that fades into brown farther out.
+The disk extends past the image edges with the current camera distance and field of view.
+
+### Things to watch out for
+
+- Stopping on a disk hit used to skip the loop's final step-count increment. That was corrected
+  so disk-hit rays include their last RK4 step in the heatmaps and statistics. Disk hits also
+  have their own counter instead of being counted as rays that ran out of steps.
+- The intersection is estimated with a straight segment between RK4 steps. We haven't measured
+  its error against a more accurate intersection method yet.
+- The disk has no thickness. Rays that lie entirely in its plane don't have a unique crossing,
+  so an exactly side-on view is a special case. The 80-degree view avoids that.
+- Redshift and Doppler brightening aren't included yet. These renders only use the radial
+  temperature profile for disk color and brightness.
+
+The code builds, and numerical checks passed for disk crossings, the temperature peak, valid
+color values, and camera angles. The images were also checked visually; that doesn't replace
+an accuracy comparison against a reference.

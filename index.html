@@ -33,7 +33,7 @@
 <b>Team tasks (delete this box before submitting)</b>
 <p><b>Everyone first:</b> pull the repo, build it, and render the shadow image. Read through the code, especially the geodesic integrator, until you can explain how a ray is traced. Everyone speaks in the video, so everyone should understand the code.</p>
 <p><b>Person 1 (Aahil): done.</b> Stage 1 renderer (RK4 with adaptive steps, star map and checkerboard sky), fixed-step mode, step-count heatmaps, timing CSV and benchmarks, OpenMP. Renders and heatmaps are in <code>images/</code>. Remaining: merge everyone's branches.</p>
-<p><b>Person 2: accretion disk</b> (work on a branch called <code>disk</code>, with the disk code in its own files)</p>
+<p><b>Person 2 (Ronald Aung): accretion disk — done.</b> Disk intersections, striped and blackbody shading, camera inclination, four renders, and notes are complete. The original task list is below.</p>
 <ol>
 <li>Add a thin disk in the equatorial plane (z = 0; the renderer's world is z-up) from r = 3 (the innermost stable orbit) to r = 15.</li>
 <li>Find disk hits: after each integration step, check whether the ray's z coordinate changed sign. If it did, linearly interpolate between the two points to get the hit position, and check that its radius is between 3 and 15. Don't stop the ray at the first sign change outside the disk, because rays can cross the plane several times. That's what makes the far side of the disk appear above and below the shadow.</li>
@@ -61,7 +61,7 @@
 </div>
 
 <h1>CS184 Fall 2026 Final Project Milestone: Black Hole Renderer</h1>
-<div class="names">Names: Aahil Syed, Person 2, Person 3, Person 4</div>
+<div class="names">Names: Aahil Syed, Ronald Aung, Person 3, Person 4</div>
 <br>
 <div class="links">
     <a href="#">Webpage</a> | <a href="#">Slides</a> | <a href="#">Video</a> | <a href="#">GitHub</a>
@@ -80,10 +80,11 @@
     <li><b>Adaptive step size.</b> The step is proportional to distance from the hole (\( 0.02\,r \)), so rays take small steps near the hole and large steps in empty space. A <code>--fixed</code> mode uses a constant step instead, so we can compare the two.</li>
     <li><b>Sky.</b> Escaped rays sample an equirectangular star map by their final direction. A checkerboard sky makes the lensing distortion easy to see and check.</li>
     <li><b>Measurement tools.</b> The renderer records the number of steps per pixel and writes a step-count heatmap (log scale), and logs render time and total steps to a CSV. A benchmark script runs every combination of resolution, step mode and thread count.</li>
+    <li><b>Accretion disk.</b> Added a thin disk from radius 3 to 15, with orange stripes for checking the shape and temperature-based colors for the final look. Rays keep going after plane crossings outside the disk and stop at the first valid disk hit. We also added a camera angle option and rendered both shading styles at 30&deg; and 80&deg;.</li>
     <li><b>Parallelism.</b> Rendering is parallelized over pixels with OpenMP.</li>
 </ul>
 
-<div class="todo"><b>TODO (Person 2):</b> Add a bullet for the accretion disk: disk-plane crossing detection, multiple crossings, blackbody color. <b>TODO (Person 3):</b> Add a bullet for the integrator comparison script.</div>
+<div class="todo"><b>TODO (Person 3):</b> Add a bullet for the integrator comparison script.</div>
 
 <h2>Preliminary Results</h2>
 
@@ -131,16 +132,41 @@
 </p>
 
 <h3>Accretion disk</h3>
-<div class="todo"><b>TODO (Person 2):</b> Add 2&ndash;4 disk renders (~80&deg; and ~30&deg; inclination, texture and blackbody versions) with captions, and 2&ndash;3 sentences on how disk hits are found and any problems you hit.</div>
+<p>
+    After each ray step, we check whether it crossed the disk's plane and estimate the crossing point with a straight line between the two positions. If the point is between radii 3 and 15, we stop the ray and use the disk color; otherwise, it keeps going and can hit the disk on a later crossing. Stopping at a disk hit also exposed a step-count issue: the last step was being skipped in the count, so we fixed that.
+</p>
+<div class="row">
+    <figure>
+        <img src="renders/disk_stripes_30.png" alt="Orange striped accretion disk viewed at 30 degrees from the vertical axis">
+        <figcaption>Stripes at 30&deg;: looking down onto more of the disk's surface.</figcaption>
+    </figure>
+    <figure>
+        <img src="renders/disk_stripes_80.png" alt="Orange striped accretion disk viewed nearly edge-on at 80 degrees">
+        <figcaption>Stripes at 80&deg;: the far side appears bent above the shadow.</figcaption>
+    </figure>
+</div>
+<div class="row">
+    <figure>
+        <img src="renders/disk_blackbody_30.png" alt="Accretion disk with temperature-based shading at 30 degrees">
+        <figcaption>Blackbody colors at 30&deg;: a bright inner region fades into a dimmer outer disk.</figcaption>
+    </figure>
+    <figure>
+        <img src="renders/disk_blackbody_80.png" alt="Accretion disk with temperature-based shading at 80 degrees">
+        <figcaption>Blackbody colors at 80&deg;: the front crosses the shadow and the far side forms an arch.</figcaption>
+    </figure>
+</div>
+<p>
+    All four images are 1280&times;720. The temperature peaks at 6500 K just outside the inner edge, and we use an approximate temperature-to-RGB conversion with brightness scaled by relative temperature to the fourth power. Redshift and Doppler effects are still to come; the outer disk is cropped by the current camera framing.
+</p>
 
 <h3>Integrator accuracy</h3>
 <div class="todo"><b>TODO (Person 3):</b> Add the error-vs-function-evaluations plot (Euler, RK4, RK45), the table of critical impact parameter vs. the exact \( 3\sqrt{3}/2 \approx 2.598 \), and 2&ndash;3 sentences on the results.</div>
 
 <h2>Progress Relative to Our Plan</h2>
 <p>
-    Week 1 is complete: the renderer traces curved rays and renders the shadow against a star background. We went beyond the plan on measurement, adding step-count heatmaps, timing, and a fixed vs. adaptive comparison, because the proposal feedback asked for deeper evaluation of the numerical methods.
+    Week 1 is complete: the renderer traces curved rays and renders the shadow against a star background. The disk part of Week 2 is also done, with striped and temperature-based shading and renders at 30&deg; and 80&deg;. We went beyond the plan on measurement, adding step-count heatmaps, timing, and a fixed vs. adaptive comparison, because the proposal feedback asked for deeper evaluation of the numerical methods.
 </p>
-<div class="todo"><b>TODO (all):</b> Once everything is merged, update this paragraph to match what is actually finished: whether the disk works, whether the integrator comparison is done, and that the GPU port has not started yet (it was planned for Week 2).</div>
+<div class="todo"><b>TODO (all):</b> Once everything is merged, update this paragraph to match what is actually finished: whether the integrator comparison is done and the current status of the GPU port (it was planned for Week 2).</div>
 
 <h2>Updated Work Plan</h2>
 <p>

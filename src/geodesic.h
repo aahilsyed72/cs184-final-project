@@ -72,7 +72,10 @@ RayResult trace_ray(RayState s, const TraceParams& p, OnStep&& on_step,
         double dl = p.adaptive ? std::clamp(p.step_scale * r, p.dl_min, p.dl_max) : p.fixed_dl;
         RayState prev = s;
         rk4_step(s, h2, dl);
-        if (on_step(prev, s)) break;
+        if (on_step(prev, s)) {
+            ++i;  // Include the step that triggered callback termination.
+            break;
+        }
     }
     if (final_state) *final_state = s;
     if (steps_taken) *steps_taken = i;

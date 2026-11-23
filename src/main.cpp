@@ -6,6 +6,7 @@
 //   escaped  (r > 50) -> look up the sky in the ray's final direction
 //   max steps         -> black (ray stuck orbiting near the photon sphere)
 
+#include "disk.h"
 #include "geodesic.h"
 #include "heatmap.h"
 #include "sky.h"
@@ -34,6 +35,7 @@ struct Options {
     Vec3 lookat{0, 0, 0};
     Vec3 up{0, 0, 1};
     double fov_deg = 40;  // vertical field of view
+    double inclination_deg = -1;  // Unset: keep the original camera position.
     int width = 1280, height = 720;
     int spp = 1;          // samples per pixel (stratified sqrt(spp) x sqrt(spp) grid)
     std::string sky = "stars";  // "stars" | "checker" | path to an equirect image
@@ -45,6 +47,7 @@ struct Options {
     double heat_lo = 0, heat_hi = 0;  // heatmap color range (0 = auto from data)
     std::string csv_out;              // if set, append a timing row to this CSV
     TraceParams trace;
+    DiskParams disk;
 };
 
 static void usage() {
@@ -53,10 +56,13 @@ static void usage() {
         "  --pos x,y,z         camera position          (default 0,-20,2)\n"
         "  --lookat x,y,z      look-at point            (default 0,0,0)\n"
         "  --up x,y,z          up vector                (default 0,0,1)\n"
+        "  --inclination deg   angle from +z, 0 face-on, 90 edge-on; aims at origin\n"
+        "                      uses --pos distance, places camera in the negative-y half-plane\n"
         "  --fov deg           vertical FOV             (default 40)\n"
         "  --res WxH           resolution               (default 1280x720)\n"
         "  --spp n             samples per pixel        (default 1; use 4 or 9 to antialias)\n"
         "  --sky S             stars | checker | path/to/equirect.(png|jpg|hdr)\n"
+        "  --disk MODE         blackbody | stripes (default blackbody)\n"
         "  --exposure e        brightness multiplier    (default 1)\n"
         "  --step k            adaptive step factor, dλ = k*r (default 0.02)\n"
         "  --fixed dl          use a FIXED step dλ = dl instead of adaptive (e.g. 0.03)\n"
@@ -91,11 +97,30 @@ static Options parse_args(int argc, char** argv) {
         else if (a == "--lookat") o.lookat = parse_vec(next());
         else if (a == "--up") o.up = parse_vec(next());
         else if (a == "--fov") o.fov_deg = std::atof(next());
+        else if (a == "--inclination") {
+            const char* value = next();
+            char* end = nullptr;
+            o.inclination_deg = std::strtod(value, &end);
+            if (end == value || *end != '\0' || !std::isfinite(o.inclination_deg) ||
+                o.inclination_deg < 0.0 || o.inclination_deg > 90.0) {
+                std::fprintf(stderr, "--inclination must be a number from 0 to 90 degrees\n");
+                std::exit(1);
+            }
+        }
         else if (a == "--res") {
             if (std::sscanf(next(), "%dx%d", &o.width, &o.height) != 2) { std::fprintf(stderr, "bad --res\n"); std::exit(1); }
         }
         else if (a == "--spp") o.spp = std::max(1, std::atoi(next()));
         else if (a == "--sky") o.sky = next();
+        else if (a == "--disk") {
+            const std::string mode = next();
+            if (mode == "blackbody") o.disk.shading = DiskShading::Blackbody;
+            else if (mode == "stripes") o.disk.shading = DiskShading::Stripes;
+            else {
+                std::fprintf(stderr, "bad --disk mode '%s' (expected blackbody or stripes)\n", mode.c_str());
+                std::exit(1);
+            }
+        }
         else if (a == "--exposure") o.exposure = std::atof(next());
         else if (a == "--step") o.trace.step_scale = std::atof(next());
         else if (a == "--rmax") o.trace.r_escape = std::atof(next());
@@ -111,6 +136,18 @@ static Options parse_args(int argc, char** argv) {
         else if (a == "-o") o.out = next();
         else if (a == "-h" || a == "--help") { usage(); std::exit(0); }
         else { std::fprintf(stderr, "unknown option %s\n", a.c_str()); usage(); std::exit(1); }
+    }
+    // Apply after parsing so --pos/--lookat ordering does not change the result.
+    if (o.inclination_deg >= 0.0) {
+        const double radius = length(o.pos);
+        if (!std::isfinite(radius) || radius <= o.trace.r_horizon) {
+            std::fprintf(stderr, "--inclination requires a camera distance outside the horizon\n");
+            std::exit(1);
+        }
+        const double angle = o.inclination_deg * M_PI / 180.0;
+        o.pos = Vec3(0, -radius * std::sin(angle), radius * std::cos(angle));
+        o.lookat = Vec3(0, 0, 0);
+        o.up = Vec3(0, 0, 1);
     }
     return o;
 }
@@ -205,7 +242,8 @@ int main(int argc, char** argv) {
     std::vector<Color> img(size_t(W) * H);
     std::vector<float> steps_px(size_t(W) * H);  // average RK4 steps per sample, per pixel
 
-    long n_captured = 0, n_escaped = 0, n_maxsteps = 0;
+    const DiskParams& disk = opt.disk;
+    long n_captured = 0, n_escaped = 0, n_maxsteps = 0, n_disk = 0;
     long long total_steps = 0;
     auto t0 = std::chrono::steady_clock::now();
 
@@ -215,7 +253,7 @@ int main(int argc, char** argv) {
     // The counters are combined with an OpenMP reduction: each thread keeps a
     // private copy and they are summed at the end (no locks or atomics).
 #pragma omp parallel for schedule(dynamic, 1) \
-    reduction(+ : n_captured, n_escaped, n_maxsteps, total_steps)
+    reduction(+ : n_captured, n_escaped, n_maxsteps, n_disk, total_steps)
     for (int py = 0; py < H; ++py) {
         for (int px = 0; px < W; ++px) {
             Color acc;
@@ -225,12 +263,22 @@ int main(int argc, char** argv) {
                     double fx = px + (sx + 0.5) / grid, fy = py + (sy + 0.5) / grid;
                     RayState s{cam.pos, cam.ray_dir(fx, fy, W, H)};
                     RayState end;
+                    bool disk_hit = false;
+                    Vec3 hit_position;
                     int nsteps = 0;
                     RayResult res = trace_ray(
-                        s, opt.trace, [](const RayState&, const RayState&) { return false; }, &end,
+                        s, opt.trace,
+                        [&](const RayState& prev, const RayState& cur) {
+                            disk_hit = intersect_disk(prev, cur, hit_position, disk);
+                            return disk_hit;  // Opaque disk: stop at the first valid hit.
+                        }, &end,
                         &nsteps);
                     pixel_steps += nsteps;
-                    if (res == RayResult::Escaped) {
+                    // Callback termination returns MaxSteps, so check the disk flag first.
+                    if (disk_hit) {
+                        acc += shade_disk(hit_position, disk);
+                        ++n_disk;
+                    } else if (res == RayResult::Escaped) {
                         acc += sample_sky(normalize(end.v));
                         ++n_escaped;
                     } else if (res == RayResult::Captured) {
@@ -262,7 +310,7 @@ int main(int argc, char** argv) {
 
     const std::string mode = opt.trace.adaptive ? "adaptive" : "fixed";
     const double step_param = opt.trace.adaptive ? opt.trace.step_scale : opt.trace.fixed_dl;
-    long total = n_captured + n_escaped + n_maxsteps;
+    long total = n_captured + n_escaped + n_maxsteps + n_disk;
     double steps_per_sec = total_steps / secs;
     double mean_steps = double(total_steps) / total;
     float max_px_steps = *std::max_element(steps_px.begin(), steps_px.end());
@@ -296,8 +344,8 @@ int main(int argc, char** argv) {
 
     std::printf("wrote %s  (%dx%d, %d spp, %d threads, %s step %g)  %.3f s\n", opt.out.c_str(), W, H,
                 spp, nthreads, mode.c_str(), step_param, secs);
-    std::printf("rays: %ld captured (%.2f%%), %ld escaped, %ld hit max steps\n", n_captured,
-                100.0 * n_captured / total, n_escaped, n_maxsteps);
+    std::printf("rays: %ld captured (%.2f%%), %ld escaped, %ld hit disk, %ld hit max steps\n", n_captured,
+                100.0 * n_captured / total, n_escaped, n_disk, n_maxsteps);
     std::printf("steps: %lld total, %.1f per ray, %.3g steps/s\n", total_steps, mean_steps,
                 steps_per_sec);
     return 0;

@@ -53,9 +53,16 @@ cmake --build build -j
 
 Main options (`--help` lists them all):
 
+The thin disk now uses approximate blackbody coloring by default. Use
+`--disk stripes` for the diagnostic orange bands or `--disk blackbody` for
+temperature-based shading. The temperature profile peaks at 6500 K just
+outside the inner edge (r = 49/12), with relative brightness scaled by T^4.
+This is an appearance approximation; redshift and Doppler effects are not included.
+
 | option | meaning | default |
 |---|---|---|
 | `--pos x,y,z` / `--lookat x,y,z` / `--up x,y,z` | camera (world is z-up) | `0,-20,2` / origin / `0,0,1` |
+| `--inclination deg` | angle from +z: 0 face-on, 90 edge-on | off |
 | `--fov deg`, `--res WxH` | vertical FOV, resolution | 40, 1280x720 |
 | `--spp n` | samples per pixel (antialiasing) | 1 |
 | `--sky S` | `stars`, `checker`, or an image path | `stars` |
@@ -65,6 +72,24 @@ Main options (`--help` lists them all):
 | `--heatmap f.png`, `--heat-range lo,hi` | per-pixel step-count heatmap | off |
 | `--csv f.csv` | append render time / step stats | off |
 | `--flatcam` | turn off the hovering-observer camera correction | off |
+
+### Disk viewing angles
+
+`--inclination` keeps the camera's distance from the origin (from `--pos`,
+or about 20.1 by default), puts it in the negative-y half-plane, and aims it
+at the origin with z-up. It overrides the orientation from `--pos`, `--lookat`,
+and `--up` regardless of argument order. Omit it to keep the original camera.
+Exactly 90 degrees is a degenerate view for a zero-thickness disk; use 80
+degrees for the nearly edge-on result.
+
+Run these commands to produce the four Person 2 images:
+
+```bash
+./build/blackhole --sky stars --disk stripes --inclination 30 --res 1280x720 --spp 4 -o renders/disk_stripes_30.png
+./build/blackhole --sky stars --disk stripes --inclination 80 --res 1280x720 --spp 4 -o renders/disk_stripes_80.png
+./build/blackhole --sky stars --disk blackbody --inclination 30 --res 1280x720 --spp 4 -o renders/disk_blackbody_30.png
+./build/blackhole --sky stars --disk blackbody --inclination 80 --res 1280x720 --spp 4 -o renders/disk_blackbody_80.png
+```
 
 ## Benchmarks
 
